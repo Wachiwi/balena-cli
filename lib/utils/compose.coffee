@@ -368,11 +368,10 @@ getPreviousRepos = (logger, appID) ->
 		images = release[0].contains__image
 		repos = []
 		for i in images
-                        imageName = i.image[0].is_stored_at__image_location
-                        [ _match, registry, repo, tag = 'latest' ] = /(.*?)\/(.*?)(?::([^/]*))?$/.exec(imageName)
-                        repoName = "#{repo}"
-                        repos.push(repoName)
-                        logger.logDebug("Requesting access to previously pushed image repo (#{repoName})")
+			imageName = i.image[0].is_stored_at__image_location
+			[ _, _, repoName, _ = 'latest' ] = /(.*?)\/(.*?)(?::([^/]*))?$/.exec(imageName)
+			repos.push(repoName)
+			logger.logDebug("Requesting access to previously pushed image repo (#{repoName})")
 		return repos
 
 
