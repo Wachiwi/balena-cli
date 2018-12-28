@@ -349,13 +349,41 @@ tagServiceImages = (docker, images, serviceImages) ->
 			logs: d.logs
 			props: d.props
 
-authorizePush = (tokenAuthEndpoint, registry, images) ->
+
+getPreviousRepos = (logger, appID) ->
+	sdk = require('balena-sdk').fromSharedOptions()
+	sdk.pine.get(
+		resource: 'release'
+		options:
+			$filter:
+				belongs_to__application: appID
+				status: 'success'
+			$expand:
+				contains__image:
+					$expand: 'image'
+	)
+
+	.then (release) ->
+            # grab all images from the latest release, return all image locations in the registry
+		images = release[0].contains__image
+		repos = []
+		for i in images
+                        imageName = i.image[0].is_stored_at__image_location
+                        [ _match, registry, repo, tag = 'latest' ] = /(.*?)\/(.*?)(?::([^/]*))?$/.exec(imageName)
+                        repoName = "#{repo}"
+                        repos.push(repoName)
+                        logger.logDebug("Requesting access to previously pushed image repo (#{repoName})")
+		return repos
+
+
+authorizePush = (tokenAuthEndpoint, registry, images, previousRepos) ->
 	_ = require('lodash')
 	sdk = require('balena-sdk').fromSharedOptions()
 
 	if not _.isArray(images)
 		images = [ images ]
 
+	images.push previousRepos...
 	sdk.request.send
 		baseUrl: tokenAuthEndpoint
 		url: '/auth/v1/token'
@@ -423,18 +451,20 @@ exports.deployProject = (
 		tagServiceImages(docker, images, serviceImages)
 		.tap (images) ->
 			logger.logDebug('Authorizing push...')
-			authorizePush(apiEndpoint, images[0].registry, _.map(images, 'repo'))
-			.then (token) ->
-				logger.logInfo('Pushing images to registry...')
-				pushAndUpdateServiceImages docker, token, images, (serviceImage) ->
-					logger.logDebug("Saving image #{serviceImage.is_stored_at__image_location}")
-					if skipLogUpload
-						delete serviceImage.build_log
-					releaseMod.updateImage(client, serviceImage.id, serviceImage)
-			.finally ->
-				logger.logDebug('Untagging images...')
-				Promise.map images, ({ localImage }) ->
-					localImage.remove()
+			getPreviousRepos(logger, appId)
+			.then (previousRepos) ->
+				authorizePush(apiEndpoint, images[0].registry, _.map(images, 'repo'), previousRepos)
+				.then (token) ->
+					logger.logInfo('Pushing images to registry...')
+					pushAndUpdateServiceImages docker, token, images, (serviceImage) ->
+						logger.logDebug("Saving image #{serviceImage.is_stored_at__image_location}")
+						if skipLogUpload
+							delete serviceImage.build_log
+						releaseMod.updateImage(client, serviceImage.id, serviceImage)
+				.finally ->
+					logger.logDebug('Untagging images...')
+					Promise.map images, ({ localImage }) ->
+						localImage.remove()
 		.then ->
 			release.status = 'success'
 		.tapCatch ->
