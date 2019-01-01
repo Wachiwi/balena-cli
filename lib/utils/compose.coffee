@@ -352,6 +352,8 @@ tagServiceImages = (docker, images, serviceImages) ->
 
 getPreviousRepos = (logger, appID) ->
 	sdk = require('balena-sdk').fromSharedOptions()
+	DockerToolbelt = require('docker-toolbelt')
+	dockerToolbelt = new DockerToolbelt()
 	sdk.pine.get(
 		resource: 'release'
 		options:
@@ -364,16 +366,14 @@ getPreviousRepos = (logger, appID) ->
 	)
 
 	.then (release) ->
-            # grab all images from the latest release, return all image locations in the registry
+		# grab all images from the latest release, return all image locations in the registry
 		images = release[0].contains__image
-		repos = []
-		for i in images
-			imageName = i.image[0].is_stored_at__image_location
-			[ _, _, repoName, _ = 'latest' ] = /(.*?)\/(.*?)(?::([^/]*))?$/.exec(imageName)
-			repos.push(repoName)
-			logger.logDebug("Requesting access to previously pushed image repo (#{repoName})")
-		return repos
-
+		Promise.map images, (d) ->
+			imageName = d.image[0].is_stored_at__image_location
+			dockerToolbelt.getRegistryAndName(imageName)
+			.then ( registry ) ->
+				logger.logDebug("Requesting access to previously pushed image repo (#{registry.imageName})")
+				return registry.imageName
 
 authorizePush = (tokenAuthEndpoint, registry, images, previousRepos) ->
 	_ = require('lodash')
