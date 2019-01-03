@@ -367,13 +367,15 @@ getPreviousRepos = (logger, appID) ->
 
 	.then (release) ->
 		# grab all images from the latest release, return all image locations in the registry
-		images = release[0].contains__image
-		Promise.map images, (d) ->
-			imageName = d.image[0].is_stored_at__image_location
-			dockerToolbelt.getRegistryAndName(imageName)
-			.then ( registry ) ->
-				logger.logDebug("Requesting access to previously pushed image repo (#{registry.imageName})")
-				return registry.imageName
+		if release.length > 0
+			images = release[0].contains__image
+			Promise.map images, (d) ->
+				imageName = d.image[0].is_stored_at__image_location
+				dockerToolbelt.getRegistryAndName(imageName)
+				.then ( registry ) ->
+					logger.logDebug("Requesting access to previously pushed image repo (#{registry.imageName})")
+					return registry.imageName
+		return
 
 authorizePush = (tokenAuthEndpoint, registry, images, previousRepos) ->
 	_ = require('lodash')
